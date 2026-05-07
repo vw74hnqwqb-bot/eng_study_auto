@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VocaMaster Pro - 관리자 모드 지원</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;900&display=swap');
+        body { font-family: 'Pretendard', sans-serif; }
+        .perspective-1000 { perspective: 1000px; }
+        .preserve-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+        .flip-card-inner { transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+        .flip-card-inner.flipped { transform: rotateY(180deg); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .modal-overlay { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 h-screen overflow-hidden flex flex-col">
+
+    <!-- Top Navigation -->
+    <nav class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 flex-shrink-0 z-50">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-indigo-200">V</div>
+            <div class="flex flex-col">
+                <span class="font-black text-lg leading-none tracking-tight text-slate-800 uppercase">VocaMaster</span>
+                <span id="sheet-status" class="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mt-0.5">Disconnected</span>
+            </div>
+        </div>
+        <div class="flex bg-slate-100 p-1 rounded-2xl">
+            <button onclick="setMode('card')" id="nav-card" class="px-6 py-2 rounded-xl text-sm font-bold transition-all bg-white text-indigo-600 shadow-sm">학습 모드</button>
+            <button onclick="setMode('quiz')" id="nav-quiz" class="px-6 py-2 rounded-xl text-sm font-bold transition-all text-slate-500 hover:text-slate-700">퀴즈 모드</button>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="text-right hidden sm:block">
+                <div id="progress-text" class="text-sm font-black text-slate-700">0 / 0</div>
+                <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Words Loaded</div>
+            </div>
+            <button onclick="openAdmin()" class="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all border border-slate-100">
+                <i data-lucide="settings" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </nav>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-72 bg-white border-r border-slate-200 p-6 flex flex-col gap-8 flex-shrink-0">
+            <div>
+                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Learning Stats</h3>
+                <div class="space-y-3">
+                    <div class="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100">
+                        <div id="stat-accuracy" class="text-2xl font-black text-indigo-900">0%</div>
+                        <div class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Accuracy</div>
+                    </div>
+                    <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                        <div id="stat-mistakes" class="text-2xl font-black text-slate-800">0</div>
+                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Local Mistakes</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-hidden flex flex-col">
+                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">My Mistakes (Local)</h3>
+                <div id="error-log" class="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                    <div class="h-full flex flex-col items-center justify-center opacity-20 filter grayscale">
+                        <i data-lucide="info" class="w-10 h-10 mb-2"></i>
+                        <p class="text-[10px] font-bold uppercase tracking-widest">No errors recorded</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Display -->
+        <main class="flex-1 p-12 flex flex-col items-center justify-center relative bg-slate-50/50">
+            <!-- Flashcard Section -->
+            <div id="card-section" class="w-full max-w-xl flex flex-col items-center animate-in fade-in duration-500">
+                <div class="perspective-1000 w-full h-[360px] cursor-pointer" onclick="toggleFlip()">
+                    <div id="flip-card" class="flip-card-inner relative w-full h-full preserve-3d">
+                        <!-- Front -->
+                        <div class="absolute inset-0 w-full h-full bg-white rounded-[40px] shadow-2xl shadow-indigo-100/50 border border-slate-100 flex flex-col items-center justify-center p-12 text-center backface-hidden">
+                            <span id="card-order" class="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-6">Word 01</span>
+                            <h2 id="card-word" class="text-5xl font-black text-slate-800 mb-8 tracking-tight">연결 대기 중</h2>
+                            <div class="h-1 w-10 bg-indigo-100 rounded-full mb-8"></div>
+                            <div class="text-indigo-300 font-bold text-[10px] uppercase tracking-widest flex items-center gap-2">
+                                <i data-lucide="mouse-pointer-2" class="w-4 h-4"></i> Click to flip
+                            </div>
+                        </div>
+                        <!-- Back -->
+                        <div class="absolute inset-0 w-full h-full bg-indigo-600 rounded-[40px] shadow-2xl shadow-indigo-500/20 flex flex-col items-center justify-center p-12 text-center backface-hidden rotate-y-180">
+                            <span class="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-6">Meaning</span>
+                            <h2 id="card-meaning" class="text-3xl font-bold text-white leading-tight underline decoration-white/20 underline-offset-8">구글 시트를 연결해 주세요</h2>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-12 flex items-center gap-6">
+                    <button onclick="prevWord()" class="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:border-indigo-600 transition-all active:scale-95">
+                        <i data-lucide="chevron-left" class="w-6 h-6"></i>
+                    </button>
+                    <button onclick="nextWord()" class="px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 shadow-xl shadow-slate-200 transition-all active:scale-95">
+                        Next Word
+                    </button>
+                    <button onclick="nextWord()" class="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:border-indigo-600 transition-all active:scale-95">
+                        <i data-lucide="chevron-right" class="w-6 h-6"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quiz Section -->
+            <div id="quiz-section" class="hidden w-full max-w-xl flex flex-col items-center">
+                <div class="bg-white w-full p-12 rounded-[40px] shadow-2xl shadow-indigo-100/50 border border-slate-100 text-center mb-8">
+                    <span class="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-4 block">Question</span>
+                    <h2 id="quiz-word" class="text-4xl font-black text-slate-800">Word</h2>
+                </div>
+                <div id="quiz-choices" class="grid grid-cols-1 gap-3 w-full"></div>
+                <div id="quiz-next-btn" class="hidden mt-8 w-full animate-in slide-in-from-bottom-2 duration-300">
+                    <button onclick="nextWord()" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 shadow-xl transition-all">
+                        다음 문제로 넘어가기 <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Admin Modal -->
+    <div id="admin-modal" class="fixed inset-0 z-[100] hidden modal-overlay flex items-center justify-center p-6 animate-in fade-in duration-300">
+        <!-- Auth View -->
+        <div id="admin-auth" class="bg-white p-12 rounded-[32px] shadow-2xl max-w-sm w-full text-center border border-slate-100">
+            <div class="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <i data-lucide="lock" class="w-8 h-8 text-slate-400"></i>
+            </div>
+            <h2 class="text-2xl font-black text-slate-800 mb-2">관리자 비밀번호</h2>
+            <p class="text-xs text-slate-400 uppercase tracking-widest font-bold mb-8">Access Restricted</p>
+            <input type="password" id="admin-pw-input" class="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl text-center font-black tracking-[0.5em] mb-4 focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="••••">
+            <div class="flex gap-2">
+                <button onclick="closeAdmin()" class="flex-1 bg-slate-100 text-slate-600 py-4 rounded-xl font-bold hover:bg-slate-200">취소</button>
+                <button onclick="checkAdminPw()" class="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100">확인</button>
+            </div>
+        </div>
+
+        <!-- Settings View -->
+        <div id="admin-settings" class="hidden bg-white p-10 rounded-[40px] shadow-2xl max-w-2xl w-full border border-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h2 class="text-2xl font-black text-slate-800 tracking-tight">관리자 설정</h2>
+                    <p class="text-xs text-indigo-500 font-bold uppercase tracking-widest mt-1">Spreadsheet Integration</p>
+                </div>
+                <button onclick="closeAdmin()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+
+            <div class="space-y-8">
+                <!-- 시트 연동 -->
+                <div class="space-y-4">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">1. 영단어 데이터 시트 (Words)</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="sheet-url-input" class="flex-1 bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="영단어가 있는 구글 시트 주소/ID">
+                        <button onclick="saveSheetUrl()" class="px-6 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all text-sm">연동하기</button>
+                    </div>
+                </div>
+
+                <!-- GAS 연동 -->
+                <div class="space-y-4 pt-6 border-t border-slate-100">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">2. 오답 기록용 GAS 주소 (Mistakes)</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="gas-url-input" class="flex-1 bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Google Apps Script 배포 URL">
+                        <button onclick="saveGasUrl()" class="px-6 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 shadow-lg transition-all text-sm">저장하기</button>
+                    </div>
+                    <p id="gas-status-log" class="text-[10px] text-slate-400">오답 발생 시 위 주소로 데이터가 전송됩니다.</p>
+                </div>
+
+                <div class="pt-6 border-t border-slate-100">
+                    <button onclick="resetApp()" class="w-full bg-red-50 text-red-600 py-4 rounded-xl font-bold hover:bg-red-100 transition-all">전체 로컬 데이터 초기화</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        let words = [];
+        let currentIndex = 0;
+        let mode = 'card';
+        let isFlipped = false;
+        let selectedIdx = null;
+        
+        // 로컬 데이터 상태
+        let appState = {
+            sheetId: '',
+            gasUrl: '', // GAS 연동 주소 추가
+            mistakes: {} // { "word": count }
+        };
+
+        // 1. 초기화
+        function init() {
+            const savedState = localStorage.getItem('voca_app_state');
+            if (savedState) {
+                appState = JSON.parse(savedState);
+            }
+            
+            if (appState.sheetId) {
+                loadWords(appState.sheetId);
+            } else {
+                updateUIState('Disconnected');
+            }
+            
+            // GAS 주소가 이미 있다면 UI에 표시 (관리자 메뉴 열 때 업데이트됨)
+            renderErrorLog();
+            lucide.createIcons();
+        }
+
+        // 2. 관리자 메뉴 제어
+        function openAdmin() {
+            document.getElementById('admin-modal').classList.remove('hidden');
+            document.getElementById('admin-auth').classList.remove('hidden');
+            document.getElementById('admin-settings').classList.add('hidden');
+            document.getElementById('admin-pw-input').value = '';
+            document.getElementById('admin-pw-input').focus();
+        }
+
+        function closeAdmin() {
+            document.getElementById('admin-modal').classList.add('hidden');
+        }
+
+        function checkAdminPw() {
+            const pw = document.getElementById('admin-pw-input').value;
+            if (pw === '1234') {
+                document.getElementById('admin-auth').classList.add('hidden');
+                document.getElementById('admin-settings').classList.remove('hidden');
+                document.getElementById('sheet-url-input').value = appState.sheetId || '';
+                document.getElementById('gas-url-input').value = appState.gasUrl || '';
+            } else {
+                alert('비밀번호가 틀렸습니다.');
+            }
+        }
+
+        // 3. 구글 시트 및 GAS 주소 저장
+        function saveSheetUrl() {
+            let input = document.getElementById('sheet-url-input').value;
+            let sheetId = input;
+            
+            if (input.includes('/d/')) {
+                sheetId = input.split('/d/')[1].split('/')[0];
+            }
+            
+            appState.sheetId = sheetId;
+            saveState();
+            loadWords(sheetId);
+        }
+
+        function saveGasUrl() {
+            const input = document.getElementById('gas-url-input').value.trim();
+            appState.gasUrl = input;
+            saveState();
+            alert('GAS 주소가 저장되었습니다.');
+        }
+
+        // 4. GAS 오답 전송 엔진
+        async function logMistakeToGAS(word) {
+            if (!appState.gasUrl) {
+                console.warn('GAS URL이 설정되지 않아 오답 정보를 전송할 수 없습니다.');
+                return;
+            }
+
+            try {
+                // Fetch를 사용하여 GAS로 데이터 전송
+                // GAS doPost의 제약상 'no-cors'를 사용하면 응답 데이터는 읽을 수 없지만 데이터 전송은 성공합니다.
+                await fetch(appState.gasUrl, {
+                    method: 'POST',
+                    mode: 'no-cors', 
+                    headers: {
+                        'Content-Type': 'text/plain', // CORS 프리플라이트를 피하기 위해 text/plain 사용
+                    },
+                    body: JSON.stringify({ word: word })
+                });
+                console.log(`GAS 기록 보냄: ${word}`);
+            } catch (e) {
+                console.error('GAS 전송 실패:', e);
+            }
+        }
+
+        async function loadWords(sheetId) {
+            updateUIState('Connecting...');
+            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Sheet1`;
+            
+            try {
+                const res = await fetch(url);
+                const text = await res.text();
+                
+                const rows = text.split('\n').filter(r => r.trim() !== '');
+                const fetchedWords = rows.slice(1).map(row => {
+                    const columns = row.split(',').map(c => c.trim().replace(/^"(.*)"$/, '$1'));
+                    return { word: columns[0], meaning: columns[1] };
+                }).filter(w => w.word && w.meaning);
+
+                if (fetchedWords.length > 0) {
+                    words = fetchedWords;
+                    currentIndex = 0;
+                    updateUIState('Live Sync');
+                    render();
+                    updateStats();
+                    closeAdmin();
+                } else {
+                    throw new Error('No data found');
+                }
+            } catch (e) {
+                console.error(e);
+                updateUIState('Error');
+                alert('구글 시트를 불러오지 못했습니다. 게시 설정 또는 주소를 확인해 주세요.');
+            }
+        }
+
+        // 5. 모드 및 렌더링
+        function setMode(m) {
+            mode = m;
+            isFlipped = false;
+            selectedIdx = null;
+            document.getElementById('nav-card').className = m === 'card' ? 'px-6 py-2 rounded-xl text-sm font-bold transition-all bg-white text-indigo-600 shadow-sm' : 'px-6 py-2 rounded-xl text-sm font-bold transition-all text-slate-500 hover:text-slate-700';
+            document.getElementById('nav-quiz').className = m === 'quiz' ? 'px-6 py-2 rounded-xl text-sm font-bold transition-all bg-white text-indigo-600 shadow-sm' : 'px-6 py-2 rounded-xl text-sm font-bold transition-all text-slate-500 hover:text-slate-700';
+            
+            document.getElementById('card-section').classList.toggle('hidden', m !== 'card');
+            document.getElementById('quiz-section').classList.toggle('hidden', m !== 'quiz');
+            
+            if (m === 'quiz') generateQuiz();
+            render();
+            lucide.createIcons();
+        }
+
+        function toggleFlip() {
+            if (mode !== 'card') return;
+            isFlipped = !isFlipped;
+            document.getElementById('flip-card').classList.toggle('flipped', isFlipped);
+        }
+
+        function nextWord() {
+            if (words.length === 0) return;
+            currentIndex = (currentIndex + 1) % words.length;
+            resetUIState();
+        }
+
+        function prevWord() {
+            if (words.length === 0) return;
+            currentIndex = (currentIndex - 1 + words.length) % words.length;
+            resetUIState();
+        }
+
+        function resetUIState() {
+            isFlipped = false;
+            selectedIdx = null;
+            document.getElementById('flip-card').classList.remove('flipped');
+            document.getElementById('quiz-next-btn').classList.add('hidden');
+            render();
+            if (mode === 'quiz') generateQuiz();
+        }
+
+        function render() {
+            if (words.length === 0) return;
+            const current = words[currentIndex];
+            
+            document.getElementById('card-order').innerText = `Vocabulary ${String(currentIndex + 1).padStart(2, '0')}`;
+            document.getElementById('card-word').innerText = current.word;
+            document.getElementById('card-meaning').innerText = current.meaning;
+            document.getElementById('quiz-word').innerText = current.word;
+            document.getElementById('progress-text').innerText = `${currentIndex + 1} / ${words.length}`;
+        }
+
+        // 6. 퀴즈 엔진
+        function generateQuiz() {
+            if (words.length < 4) {
+                alert('퀴즈를 진행하려면 최소 4개 이상의 단어가 필요합니다.');
+                setMode('card');
+                return;
+            }
+            const current = words[currentIndex];
+            let choices = [current.meaning];
+            const others = words.filter(w => w.word !== current.word).sort(() => Math.random() - 0.5);
+            choices = [...choices, ...others.slice(0, 3).map(o => o.meaning)].sort(() => Math.random() - 0.5);
+
+            const container = document.getElementById('quiz-choices');
+            container.innerHTML = '';
+            choices.forEach((choice, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "p-5 rounded-2xl bg-white border border-slate-100 text-left font-bold text-slate-700 hover:border-indigo-600 hover:bg-indigo-50/50 transition-all flex items-center justify-between group shadow-sm";
+                btn.innerHTML = `<span>${choice}</span><div id="marker-${idx}" class="w-6 h-6 rounded-full border border-slate-100 opacity-0 flex items-center justify-center transition-all"></div>`;
+                btn.onclick = () => handleQuizAnswer(choice, idx, btn);
+                container.appendChild(btn);
+            });
+            lucide.createIcons();
+        }
+
+        function handleQuizAnswer(answer, idx, btn) {
+            if (selectedIdx !== null) return;
+            selectedIdx = idx;
+            const current = words[currentIndex];
+            const isCorrect = answer === current.meaning;
+            const marker = document.getElementById(`marker-${idx}`);
+            
+            if (isCorrect) {
+                btn.classList.add('bg-green-50', 'border-green-500', 'text-green-700');
+                marker.className = "w-6 h-6 rounded-full bg-green-500 flex items-center justify-center opacity-100 text-white";
+                marker.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>';
+            } else {
+                btn.classList.add('bg-red-50', 'border-red-500', 'text-red-700');
+                marker.className = "w-6 h-6 rounded-full bg-red-500 flex items-center justify-center opacity-100 text-white";
+                marker.innerHTML = '<i data-lucide="x" class="w-4 h-4"></i>';
+                
+                // 오답 기록 (로컬)
+                appState.mistakes[current.word] = (appState.mistakes[current.word] || 0) + 1;
+                saveState();
+                renderErrorLog();
+
+                // 오답 기록 (GAS 서버 전송)
+                logMistakeToGAS(current.word);
+            }
+            
+            document.getElementById('quiz-next-btn').classList.remove('hidden');
+            updateStats();
+            lucide.createIcons();
+        }
+
+        // 7. 유틸리티 및 상태 관리
+        function updateUIState(state) {
+            const el = document.getElementById('sheet-status');
+            el.innerText = state;
+            el.className = `text-[9px] font-bold uppercase tracking-widest mt-0.5 ${state === 'Live Sync' ? 'text-green-500' : state === 'Error' ? 'text-red-500' : 'text-indigo-500'}`;
+        }
+
+        function updateStats() {
+            const mistakeCount = Object.values(appState.mistakes).reduce((a, b) => a + b, 0);
+            document.getElementById('stat-mistakes').innerText = mistakeCount;
+            const acc = words.length > 0 ? Math.max(0, 100 - (mistakeCount * 2)) : 0;
+            document.getElementById('stat-accuracy').innerText = `${acc}%`;
+        }
+
+        function renderErrorLog() {
+            const container = document.getElementById('error-log');
+            const logs = Object.entries(appState.mistakes).sort((a, b) => b[1] - a[1]);
+            
+            if (logs.length === 0) return;
+
+            container.innerHTML = '';
+            logs.forEach(([word, count]) => {
+                const item = document.createElement('div');
+                item.className = "p-3 bg-white border border-slate-100 rounded-xl flex justify-between items-center shadow-sm animate-in slide-in-from-right-2 duration-300";
+                item.innerHTML = `<div><div class="text-sm font-bold text-slate-800">${word}</div><div class="text-[9px] font-bold text-red-500 uppercase tracking-widest mt-0.5">Wrong ${count} times</div></div><div class="w-2 h-2 bg-red-400 rounded-full"></div>`;
+                container.appendChild(item);
+            });
+        }
+
+        function saveState() {
+            localStorage.setItem('voca_app_state', JSON.stringify(appState));
+        }
+
+        function resetApp() {
+            if (confirm('모든 학습 데이터와 시트 설정을 초기화할까요?')) {
+                localStorage.removeItem('voca_app_state');
+                location.reload();
+            }
+        }
+
+        // 키보드 제어
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') { e.preventDefault(); toggleFlip(); }
+            else if (e.code === 'ArrowRight') nextWord();
+            else if (e.code === 'ArrowLeft') prevWord();
+        });
+
+        init();
+    </script>
+</body>
+</html>
